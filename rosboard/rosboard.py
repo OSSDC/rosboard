@@ -19,6 +19,7 @@ else:
 
 from geometry_msgs.msg import Twist
 from rosgraph_msgs.msg import Log
+from sensor_msgs.msg import Joy
 
 from rosboard.serialization import ros2dict
 from rosboard.subscribers.dmesg_subscriber import DMesgSubscriber
@@ -60,6 +61,8 @@ class ROSBoardNode(object):
             self.sub_rosout = rospy.Subscriber("/rosout", Log, lambda x:x)
 
         self.twist_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=100)
+        self.joy_pub = rospy.Publisher('/joy', Joy, queue_size=1)
+        
 
         tornado_settings = {
             'debug': True,
@@ -158,14 +161,36 @@ class ROSBoardNode(object):
         Sending joy message from client
         """
         twist = Twist()
+        joy = Joy()
         while True:
             time.sleep(0.1)
+            control = [0.,0.]
+            joy.buttons = [0,0,0,0,0,0]
             if not isinstance(ROSBoardSocketHandler.joy_msg, dict):
                 continue
             if 'x' in ROSBoardSocketHandler.joy_msg and 'y' in ROSBoardSocketHandler.joy_msg:
-                twist.linear.x = -float(ROSBoardSocketHandler.joy_msg['y']) * 3.0
-                twist.angular.z = -float(ROSBoardSocketHandler.joy_msg['x']) * 2.0
+                x = -float(ROSBoardSocketHandler.joy_msg['y'])
+                z = -float(ROSBoardSocketHandler.joy_msg['x'])  
+
+                twist.linear.x = x * 3.0
+                twist.angular.z = z * 2.0
+
+                throtleValue=x # * 3.0
+                steeringValue=z # * 2.0
+                breakValue = -x
+                if x>0.65: #up
+                    throtleValue = 1.0
+                    breakValue = -1.0
+                elif x>0.35: #up
+                    throtleValue = 0.5
+                    breakValue = -0.75
+                else:
+                    throtleValue = 0.0
+                    breakValue = 0.0
+            joy.axes = [steeringValue,0.,throtleValue,0.,0.,breakValue]
             self.twist_pub.publish(twist)
+            self.joy_pub.publish(joy)
+
 
     def pingpong_loop(self):
         """
